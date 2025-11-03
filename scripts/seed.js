@@ -2,6 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcryptjs');
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'tula.db');
 if (!fs.existsSync(path.dirname(DB_PATH))) fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
@@ -27,6 +28,7 @@ const places = [
 db.serialize(() => {
   db.run('DROP TABLE IF EXISTS artisans');
   db.run('DROP TABLE IF EXISTS places');
+  db.run('DROP TABLE IF EXISTS super_admins');
 
   db.run(`CREATE TABLE IF NOT EXISTS artisans (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,6 +59,14 @@ db.serialize(() => {
     updated_at TEXT DEFAULT (datetime('now'))
   )`);
 
+  db.run(`CREATE TABLE IF NOT EXISTS super_admins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    last_login_at TEXT
+  )`);
+
   const insA = db.prepare(`INSERT INTO artisans
     (name, description, category, phone, whatsapp, instagram, address, lat, lng, photo_url)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
@@ -68,6 +78,11 @@ db.serialize(() => {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
   places.forEach(p => insP.run(p.name, p.description, p.type, p.address, p.lat, p.lng, p.hours, p.price, p.photo_url));
   insP.finalize();
+
+  const defaultEmail = (process.env.SUPER_ADMIN_EMAIL || 'admin@tula.local').trim().toLowerCase();
+  const defaultPassword = process.env.SUPER_ADMIN_PASSWORD || 'changeme';
+  const defaultHash = bcrypt.hashSync(defaultPassword, 10);
+  db.run('INSERT INTO super_admins (email, password_hash) VALUES (?, ?)', [defaultEmail, defaultHash]);
 
   console.log('Database seeded at', DB_PATH);
   db.close();
